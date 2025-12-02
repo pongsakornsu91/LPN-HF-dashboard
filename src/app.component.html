@@ -1,0 +1,906 @@
+
+<div class="min-h-screen flex flex-col relative font-sans text-gray-900">
+  
+  <!-- Hidden File Input for Import -->
+  <input type="file" #fileInput class="hidden" accept=".json" (change)="onFileSelected($event)">
+
+  <!-- Navbar -->
+  <nav class="bg-white shadow-sm border-b border-gray-200 z-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex items-center gap-4">
+          <img src="https://www.lpnh.go.th/70.svg" alt="Logo" class="h-10 w-auto">
+          <div class="flex flex-col">
+            <span class="text-xl font-bold text-gray-900">HF Registry</span>
+            <span class="text-xs text-gray-700 font-medium">เครือข่ายหัวใจล้มเหลว จ.ลำพูน</span>
+          </div>
+          <!-- Environment Status Indicator -->
+          @if (dataService.isGasEnvironment()) {
+            <span class="hidden md:flex text-[10px] font-bold bg-green-100 text-green-800 px-2 py-1 rounded border border-green-200 items-center gap-1 ml-2">
+              <i class="fa-solid fa-link"></i> Live Database
+            </span>
+          } @else {
+            <span class="hidden md:flex text-[10px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200 items-center gap-1 ml-2">
+              <i class="fa-solid fa-laptop-code"></i> Local Mock Mode
+            </span>
+          }
+        </div>
+        <div class="flex items-center gap-4">
+          @if (isLoggedIn()) {
+             <!-- Admin Tools -->
+            @if (userRole() === 'admin') {
+              <div class="flex gap-2 mr-4 border-r border-gray-300 pr-4">
+                <button (click)="backupDb()" class="text-gray-500 hover:text-indigo-600 text-xs font-bold flex flex-col items-center p-1 rounded">
+                  <i class="fa-solid fa-download text-base mb-0.5"></i> สำรองข้อมูล
+                </button>
+                <button (click)="triggerImport()" class="text-gray-500 hover:text-red-600 text-xs font-bold flex flex-col items-center p-1 rounded">
+                  <i class="fa-solid fa-upload text-base mb-0.5"></i> กู้คืนข้อมูล
+                </button>
+              </div>
+            }
+
+            <div class="text-sm font-bold text-indigo-900 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
+              <i class="fa-solid fa-user-doctor mr-2"></i>
+              {{ userRole() === 'admin' ? 'Admin (IPD)' : 'เจ้าหน้าที่ OPD' }}
+            </div>
+            <button (click)="logout()" class="text-red-600 hover:text-red-800 text-sm font-bold px-3 py-1 hover:bg-red-50 rounded transition-colors">
+              <i class="fa-solid fa-right-from-bracket"></i> ออกจากระบบ
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Login Modal Overlay -->
+  @if (!isLoggedIn()) {
+    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-900 bg-opacity-80 backdrop-blur-sm flex items-center justify-center">
+      <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md transform transition-all border border-gray-100">
+        <div class="text-center mb-8">
+          <img src="https://www.lpnh.go.th/70.svg" class="mx-auto h-20 mb-4">
+          <h2 class="text-2xl font-extrabold text-gray-900">เข้าสู่ระบบ</h2>
+          <p class="text-gray-700 text-sm font-bold mt-2">ระบบทะเบียนผู้ป่วยหัวใจล้มเหลว</p>
+        </div>
+        
+        <div class="space-y-5">
+          <div>
+            <label class="block text-sm font-bold text-gray-900 mb-1.5">ชื่อผู้ใช้งาน</label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fa-solid fa-user text-gray-500"></i>
+              </div>
+              <input type="text" #usernameInput class="pl-10 block w-full rounded-lg border-gray-300 bg-white text-gray-900 focus:ring-indigo-600 focus:border-indigo-600 py-3 font-bold shadow-sm" placeholder="Username">
+            </div>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-bold text-gray-900 mb-1.5">รหัสผ่าน</label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fa-solid fa-lock text-gray-500"></i>
+              </div>
+              <input type="password" #passwordInput class="pl-10 block w-full rounded-lg border-gray-300 bg-white text-gray-900 focus:ring-indigo-600 focus:border-indigo-600 py-3 font-bold shadow-sm" placeholder="••••••••">
+            </div>
+          </div>
+
+          <div class="flex gap-3 pt-4">
+            <button (click)="login(usernameInput.value, passwordInput.value, 'opd')" 
+              class="flex-1 bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 py-3 rounded-lg font-extrabold transition-all shadow-sm hover:shadow">
+              OPD Login
+            </button>
+            <button (click)="login(usernameInput.value, passwordInput.value, 'admin')"
+              class="flex-1 bg-indigo-600 text-white hover:bg-indigo-700 py-3 rounded-lg font-extrabold transition-all shadow-lg shadow-indigo-200">
+              Admin Login
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Main Content -->
+  @if (isLoggedIn()) {
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      
+      <!-- Tabs Header -->
+      <div class="mb-8 border-b border-gray-200 bg-white rounded-t-xl px-4 shadow-sm">
+        <nav class="-mb-px flex space-x-8">
+          <button 
+            (click)="activeTab.set(1)"
+            [class]="activeTab() === 1 ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'"
+            class="whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-colors">
+            <i class="fa-solid fa-users-viewfinder"></i>
+            ภาพรวมผู้ป่วย
+          </button>
+          <button 
+            (click)="activeTab.set(2)"
+            [class]="activeTab() === 2 ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'"
+            class="whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-colors">
+            <i class="fa-solid fa-bed-pulse"></i>
+            ติดตามผู้ป่วย IPD
+          </button>
+          <button 
+            (click)="activeTab.set(3)"
+            [class]="activeTab() === 3 ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'"
+            class="whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-colors">
+            <i class="fa-solid fa-calendar-check"></i>
+            คลินิก OPD
+          </button>
+        </nav>
+      </div>
+
+      <!-- Tab 1: Overview -->
+      @if (activeTab() === 1) {
+        <div class="space-y-6">
+          <!-- Top Stats -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div (click)="filterTotal()" class="bg-white rounded-xl p-6 shadow-sm border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group">
+              <p class="text-sm font-bold text-gray-600 uppercase tracking-wider group-hover:text-indigo-700">ผู้ป่วยทั้งหมด</p>
+              <p class="mt-2 text-4xl font-extrabold text-gray-900">{{ dataService.stats().total }}</p>
+              <p class="text-xs text-indigo-400 mt-1 font-medium group-hover:text-indigo-600">คลิกเพื่อดูรายชื่อทั้งหมด</p>
+            </div>
+            <div (click)="filterActiveIPD()" class="bg-white rounded-xl p-6 shadow-sm border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group">
+              <p class="text-sm font-bold text-gray-600 uppercase tracking-wider group-hover:text-indigo-700">กำลัง Admit (IPD)</p>
+              <p class="mt-2 text-4xl font-extrabold text-indigo-600">{{ dataService.stats().ipdActive }}</p>
+              <p class="text-xs text-indigo-400 mt-1 font-medium group-hover:text-indigo-600">คลิกเพื่อดูรายชื่อ</p>
+            </div>
+            <div (click)="filterReadmit()" class="bg-white rounded-xl p-6 shadow-sm border border-gray-200 hover:border-red-500 hover:shadow-md transition-all cursor-pointer group">
+              <p class="text-sm font-bold text-gray-600 uppercase tracking-wider group-hover:text-red-700">Re-admit (30 วัน)</p>
+              <p class="mt-2 text-4xl font-extrabold text-red-600">{{ dataService.stats().readmission30d }}</p>
+              <p class="text-xs text-red-400 mt-1 font-medium group-hover:text-red-600">คลิกเพื่อดูรายชื่อ</p>
+            </div>
+            <div (click)="filterLvefLow()" class="bg-white rounded-xl p-6 shadow-sm border border-gray-200 hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group">
+              <p class="text-sm font-bold text-gray-600 uppercase tracking-wider group-hover:text-amber-700">LVEF < 50%</p>
+              <p class="mt-2 text-4xl font-extrabold text-amber-600">{{ dataService.stats().lvefLess50 }}</p>
+              <p class="text-xs text-amber-400 mt-1 font-medium group-hover:text-amber-600">คลิกเพื่อดูรายชื่อ</p>
+            </div>
+          </div>
+
+          <!-- Charts Area -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Pie Chart: LVEF -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center">
+              <h3 class="text-lg font-bold text-gray-900 mb-4 self-start">สัดส่วน LVEF (%)</h3>
+              <div id="lvef-pie-chart" class="w-full h-48 relative flex justify-center"></div>
+              <p class="text-xs text-gray-500 mt-2">คลิกที่กราฟเพื่อกรองข้อมูล</p>
+            </div>
+
+             <!-- Pie Chart: Insurance -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center">
+               <h3 class="text-lg font-bold text-gray-900 mb-4 self-start">สิทธิการรักษา</h3>
+               <div id="insurance-pie-chart" class="w-full h-48 relative flex justify-center"></div>
+               <p class="text-xs text-gray-500 mt-2">คลิกที่กราฟเพื่อกรองข้อมูล</p>
+             </div>
+
+             <!-- Pie Chart: Age -->
+             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center">
+                <h3 class="text-lg font-bold text-gray-900 mb-4 self-start">ช่วงอายุผู้ป่วย</h3>
+                <div id="age-bar-chart" class="w-full h-48 relative flex justify-center"></div>
+                <p class="text-xs text-gray-500 mt-2">คลิกที่กราฟเพื่อกรองข้อมูล</p>
+             </div>
+
+            <!-- Bar Chart: District (Full Width) -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 lg:col-span-3">
+              <div class="flex justify-between items-center mb-4">
+                 <h3 class="text-lg font-bold text-gray-900">การกระจายตัวผู้ป่วย</h3>
+                 <div class="flex items-center gap-2 text-sm font-bold">
+                    <span class="text-gray-500">ระดับ:</span>
+                    @for (item of locationBreadcrumb(); track item; let last = $last) {
+                      <span [class.text-indigo-600]="last" class="text-gray-700">{{item}}</span>
+                      @if(!last) { <i class="fa-solid fa-chevron-right text-xs text-gray-400"></i> }
+                    }
+                    @if(locationLevel() !== 'province') {
+                       <button (click)="resetLocationFilter()" class="ml-2 text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-gray-700">รีเซ็ต</button>
+                    }
+                 </div>
+              </div>
+              <div id="district-bar-chart" class="w-full h-64"></div>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Tab 2: IPD Tracking -->
+      @if (activeTab() === 2) {
+        <div class="space-y-6">
+           <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+             <h2 class="text-xl font-extrabold text-gray-900 flex items-center gap-2">
+               <i class="fa-solid fa-hospital-user text-indigo-600"></i> ติดตามผู้ป่วย
+               <select (change)="updateTrackingStatus($event)" class="ml-2 border-2 border-indigo-100 rounded-lg px-3 py-1 text-base font-bold text-indigo-700 focus:outline-none bg-indigo-50">
+                   <option value="IPD">IPD</option>
+                   <option value="OPD">OPD</option>
+               </select>
+             </h2>
+             <div class="flex items-center gap-2">
+               <span class="text-xs font-bold text-gray-600">วันที่ Admit:</span>
+               <input type="date" [value]="startDateFilter()" (change)="updateStartDate($event)" 
+                 class="border-2 border-gray-300 rounded-lg px-2 py-1.5 text-sm font-bold text-gray-900 focus:border-indigo-500 focus:ring-0">
+               <span class="text-xs font-bold text-gray-600">ถึง</span>
+               <input type="date" [value]="endDateFilter()" (change)="updateEndDate($event)" 
+                 class="border-2 border-gray-300 rounded-lg px-2 py-1.5 text-sm font-bold text-gray-900 focus:border-indigo-500 focus:ring-0">
+               
+               <button (click)="openPatientModal()" class="ml-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-md flex items-center gap-2 transition-all">
+                 <i class="fa-solid fa-plus"></i> รับใหม่ (Admit)
+               </button>
+             </div>
+           </div>
+
+           <!-- KPI Cards IPD -->
+           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+             <div (click)="filterRespiFailure()" class="bg-white p-4 rounded-xl border-l-4 border-red-500 shadow-sm cursor-pointer hover:shadow-md transition-all group">
+               <span class="block text-gray-600 text-xs font-bold uppercase group-hover:text-red-700">ใส่ท่อช่วยหายใจ (Respi Failure)</span>
+               <span class="block text-2xl font-extrabold text-red-600 mt-1">{{ dataService.stats().respiFailureCount }}</span> 
+             </div>
+             <div (click)="filterDiureticAdjust()" class="bg-white p-4 rounded-xl border-l-4 border-blue-500 shadow-sm cursor-pointer hover:shadow-md transition-all group">
+               <span class="block text-gray-600 text-xs font-bold uppercase group-hover:text-blue-700">ปรับยาขับปัสสาวะ</span>
+               <span class="block text-2xl font-extrabold text-blue-600 mt-1">{{ dataService.stats().diureticAdjustCount }}</span>
+             </div>
+             <div (click)="filterTripleTherapy()" class="bg-white p-4 rounded-xl border-l-4 border-green-500 shadow-sm cursor-pointer hover:shadow-md transition-all group">
+               <span class="block text-gray-600 text-xs font-bold uppercase group-hover:text-green-700">ได้รับยา GDMT ครบ (3+)</span>
+               <span class="block text-2xl font-extrabold text-green-600 mt-1">{{ dataService.ipdStats().tripleTherapyCount }}</span>
+             </div>
+             <div (click)="filterNextAppointment()" class="bg-white p-4 rounded-xl border-l-4 border-purple-500 shadow-sm cursor-pointer hover:shadow-md transition-all group">
+               <span class="block text-gray-600 text-xs font-bold uppercase group-hover:text-purple-700">มีนัดติดตาม OPD แล้ว</span>
+               <span class="block text-2xl font-extrabold text-purple-600 mt-1">{{ dataService.stats().appointmentCount }}</span>
+             </div>
+           </div>
+
+           <!-- Etiology & Meds Charts -->
+           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">สาเหตุ Heart Failure (Etiology)</h3>
+                <div id="etiology-chart" class="h-64 flex justify-center"></div>
+              </div>
+              
+              <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div class="flex justify-between items-center mb-6">
+                   <h3 class="text-lg font-bold text-gray-900">สัดส่วนยาที่ได้รับก่อนกลับบ้าน (Pre-discharge)</h3>
+                   <div class="flex bg-gray-100 rounded-lg p-1">
+                     <button (click)="medViewMode.set('combined')" 
+                       [class.bg-white]="medViewMode() === 'combined'"
+                       [class.shadow-sm]="medViewMode() === 'combined'"
+                       [class.text-indigo-700]="medViewMode() === 'combined'"
+                       class="px-3 py-1 text-xs font-bold rounded-md transition-all text-gray-600">รวม RAAS</button>
+                     <button (click)="medViewMode.set('specific')" 
+                       [class.bg-white]="medViewMode() === 'specific'"
+                       [class.shadow-sm]="medViewMode() === 'specific'"
+                       [class.text-indigo-700]="medViewMode() === 'specific'"
+                       class="px-3 py-1 text-xs font-bold rounded-md transition-all text-gray-600">แยก ARNi</button>
+                   </div>
+                 </div>
+
+                 <div class="space-y-5">
+                   @let stats = dataService.ipdStats();
+                   
+                   @if (medViewMode() === 'combined') {
+                     <div class="relative cursor-pointer group" (click)="applyMedFilter('acei_arb_arni')">
+                       <div class="flex mb-1 items-center justify-between">
+                         <span class="text-sm font-bold text-gray-900 group-hover:text-blue-700">ACEI / ARB / ARNI</span>
+                         <span class="text-sm font-bold text-blue-600">{{stats.aceiArbArni | number:'1.0-0'}}%</span>
+                       </div>
+                       <div class="w-full bg-gray-200 rounded-full h-3">
+                         <div class="bg-blue-600 h-3 rounded-full transition-all duration-500" [style.width.%]="stats.aceiArbArni"></div>
+                       </div>
+                     </div>
+                   } @else {
+                     <div class="relative cursor-pointer group" (click)="applyMedFilter('acei_arb')">
+                       <div class="flex mb-1 items-center justify-between">
+                         <span class="text-sm font-bold text-gray-900 group-hover:text-indigo-700">ACEI / ARB (Only)</span>
+                         <span class="text-sm font-bold text-indigo-600">{{stats.aceiArb | number:'1.0-0'}}%</span>
+                       </div>
+                       <div class="w-full bg-gray-200 rounded-full h-3">
+                         <div class="bg-indigo-600 h-3 rounded-full transition-all duration-500" [style.width.%]="stats.aceiArb"></div>
+                       </div>
+                     </div>
+                     <div class="relative cursor-pointer group" (click)="applyMedFilter('arni')">
+                       <div class="flex mb-1 items-center justify-between">
+                         <span class="text-sm font-bold text-gray-900 group-hover:text-pink-700">ARNi (Sacubitril/Valsartan)</span>
+                         <span class="text-sm font-bold text-pink-600">{{stats.arni | number:'1.0-0'}}%</span>
+                       </div>
+                       <div class="w-full bg-gray-200 rounded-full h-3">
+                         <div class="bg-pink-600 h-3 rounded-full transition-all duration-500" [style.width.%]="stats.arni"></div>
+                       </div>
+                     </div>
+                   }
+
+                   <div class="relative cursor-pointer group" (click)="applyMedFilter('betaBlocker')">
+                     <div class="flex mb-1 items-center justify-between">
+                       <span class="text-sm font-bold text-gray-900 group-hover:text-emerald-700">Beta Blocker</span>
+                       <span class="text-sm font-bold text-emerald-600">{{stats.betaBlocker | number:'1.0-0'}}%</span>
+                     </div>
+                     <div class="w-full bg-gray-200 rounded-full h-3">
+                       <div class="bg-emerald-600 h-3 rounded-full transition-all duration-500" [style.width.%]="stats.betaBlocker"></div>
+                     </div>
+                   </div>
+                    
+                   <div class="relative cursor-pointer group" (click)="applyMedFilter('mra')">
+                     <div class="flex mb-1 items-center justify-between">
+                       <span class="text-sm font-bold text-gray-900 group-hover:text-amber-700">MRA</span>
+                       <span class="text-sm font-bold text-amber-600">{{stats.mra | number:'1.0-0'}}%</span>
+                     </div>
+                     <div class="w-full bg-gray-200 rounded-full h-3">
+                       <div class="bg-amber-600 h-3 rounded-full transition-all duration-500" [style.width.%]="stats.mra"></div>
+                     </div>
+                   </div>
+
+                   <div class="relative cursor-pointer group" (click)="applyMedFilter('sglt2i')">
+                     <div class="flex mb-1 items-center justify-between">
+                       <span class="text-sm font-bold text-gray-900 group-hover:text-cyan-700">SGLT2i</span>
+                       <span class="text-sm font-bold text-cyan-600">{{stats.sglt2i | number:'1.0-0'}}%</span>
+                     </div>
+                     <div class="w-full bg-gray-200 rounded-full h-3">
+                       <div class="bg-cyan-600 h-3 rounded-full transition-all duration-500" [style.width.%]="stats.sglt2i"></div>
+                     </div>
+                   </div>
+                   
+                   <p class="text-xs font-bold text-gray-600 pt-2 text-center bg-gray-100 px-3 py-1 rounded-full">
+                     <i class="fa-solid fa-arrow-pointer mr-1"></i> คลิกที่กราฟเพื่อกรองรายชื่อด้านล่าง
+                   </p>
+                 </div>
+              </div>
+           </div>
+        </div>
+      }
+
+      <!-- Tab 3: OPD Clinic -->
+      @if (activeTab() === 3) {
+        <div class="space-y-6">
+           <div class="flex flex-col lg:flex-row gap-6">
+             <!-- Calendar Side -->
+             <div class="w-full lg:w-1/3 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+               <div class="flex justify-between items-center mb-4">
+                   <h3 class="text-lg font-extrabold text-gray-900 flex items-center gap-2">
+                     <i class="fa-regular fa-calendar text-indigo-600"></i> ปฏิทินวันนัด
+                   </h3>
+                   <div class="flex gap-1">
+                      <button (click)="prevMonth()" class="p-1 rounded hover:bg-gray-100 text-gray-600"><i class="fa-solid fa-chevron-left"></i></button>
+                      <span class="text-sm font-bold text-gray-900 self-center min-w-[80px] text-center">
+                          {{ viewDate() | date:'MMM yyyy' }}
+                      </span>
+                      <button (click)="nextMonth()" class="p-1 rounded hover:bg-gray-100 text-gray-600"><i class="fa-solid fa-chevron-right"></i></button>
+                   </div>
+               </div>
+               
+               <!-- Location Filter for Calendar -->
+               <div class="mb-4">
+                   <select (change)="filterOpdLocation($event)" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-700 focus:outline-none">
+                       <option value="all">แสดงทุกคลินิก</option>
+                       <option value="OPD Cardio LPN (พุธ)">OPD Cardio LPN (พุธ)</option>
+                       <option value="OPD HF ป่าซาง">OPD HF ป่าซาง</option>
+                       <option value="OPD HF ลี้">OPD HF ลี้</option>
+                       <option value="HF clinic (ส่งต่อ LPN)">HF clinic (ส่งต่อ LPN)</option>
+                   </select>
+               </div>
+
+               <div class="grid grid-cols-7 gap-1 text-center text-xs mb-2">
+                 <div class="font-bold text-gray-400">อา</div>
+                 <div class="font-bold text-gray-900">จ</div>
+                 <div class="font-bold text-gray-900">อ</div>
+                 <div class="font-bold text-gray-900">พ</div>
+                 <div class="font-bold text-gray-900">พฤ</div>
+                 <div class="font-bold text-gray-900">ศ</div>
+                 <div class="font-bold text-gray-400">ส</div>
+               </div>
+               <div class="grid grid-cols-7 gap-1">
+                 @for (day of calendarDays(); track day) {
+                   <div 
+                    (click)="selectCalendarDate(day.date)"
+                    [class]="day.hasAppt ? 'bg-indigo-50 text-indigo-700 font-extrabold cursor-pointer hover:bg-indigo-100' : 'text-gray-400 hover:bg-gray-50'"
+                    [class.ring-2]="selectedDate() === day.dateStr"
+                    [class.ring-indigo-600]="selectedDate() === day.dateStr"
+                    class="h-10 rounded-lg flex items-center justify-center relative transition-all text-sm">
+                     {{ day.dayNum }}
+                     @if(day.hasAppt) {
+                       <span class="absolute bottom-1 w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
+                     }
+                   </div>
+                 }
+               </div>
+               <div class="mt-6 pt-6 border-t border-gray-100">
+                  <button (click)="openOpdModal()" class="w-full py-3 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-clipboard-list"></i> บันทึกการตรวจ OPD
+                  </button>
+               </div>
+             </div>
+
+             <!-- Details Side -->
+             <div class="w-full lg:w-2/3">
+                <!-- Med Stats for Selected Date/Month -->
+                <h3 class="text-lg font-bold text-gray-900 mb-4">สัดส่วนยาที่ได้รับปัจจุบัน (OPD)</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                   <div (click)="filterOpdTripleTherapy()" class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm text-center hover:border-indigo-500 cursor-pointer group transition-all">
+                     <div class="text-3xl font-extrabold text-gray-900 group-hover:text-indigo-700">{{ dataService.opdStats().tripleTherapyCount }}</div>
+                     <div class="text-xs font-bold text-gray-600 uppercase mt-1">ได้ยาครบ 3 ตัว</div>
+                   </div>
+                   <div (click)="filterOpdMed('betaBlocker')" class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm text-center hover:border-emerald-500 cursor-pointer group transition-all">
+                     <div class="text-3xl font-extrabold text-emerald-600 group-hover:text-emerald-700">{{ dataService.opdStats().betaBlocker | number:'1.0-0' }}%</div>
+                     <div class="text-xs font-bold text-gray-600 uppercase mt-1">Beta-Blocker</div>
+                   </div>
+                   <div (click)="filterOpdMed('mra')" class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm text-center hover:border-amber-500 cursor-pointer group transition-all">
+                     <div class="text-3xl font-extrabold text-amber-600 group-hover:text-amber-700">{{ dataService.opdStats().mra | number:'1.0-0' }}%</div>
+                     <div class="text-xs font-bold text-gray-600 uppercase mt-1">MRA</div>
+                   </div>
+                   <div (click)="filterOpdMed('sglt2i')" class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm text-center hover:border-cyan-500 cursor-pointer group transition-all">
+                     <div class="text-3xl font-extrabold text-cyan-600 group-hover:text-cyan-700">{{ dataService.opdStats().sglt2i | number:'1.0-0' }}%</div>
+                     <div class="text-xs font-bold text-gray-600 uppercase mt-1">SGLT2i</div>
+                   </div>
+                </div>
+
+                <!-- Search Patient for Visit -->
+                <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                   <div class="relative">
+                     <i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-gray-400"></i>
+                     <input type="text" placeholder="ค้นหา HN เพื่อบันทึกการตรวจ..." 
+                       class="w-full pl-11 pr-4 py-3 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 font-bold focus:outline-none focus:border-indigo-600 focus:ring-0 transition-colors">
+                   </div>
+                </div>
+             </div>
+           </div>
+        </div>
+      }
+
+      <!-- Shared Patient Table (Always Visible at bottom filtered) -->
+      <div class="mt-8 bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+          <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <i class="fa-solid fa-list-ul text-gray-400"></i> รายชื่อผู้ป่วย
+            @if(dataService.filter().isActiveIpd) {
+              <span class="ml-2 text-xs font-bold bg-red-100 text-red-700 px-2 py-1 rounded-md">สถานะ: กำลัง Admit</span>
+            }
+            @if(dataService.filter().isReadmit30d) {
+              <span class="ml-2 text-xs font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded-md">เงื่อนไข: Re-admit (30 วัน)</span>
+            }
+            @if(dataService.filter().isLvefLess50) {
+              <span class="ml-2 text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-md">เงื่อนไข: LVEF < 50%</span>
+            }
+            @if(dataService.filter().dateRangeStart) {
+              <span class="ml-2 text-xs font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded-md">ช่วงเวลา: {{dataService.filter().dateRangeStart}} ถึง {{dataService.filter().dateRangeEnd}}</span>
+            }
+            @if(dataService.filter().lvefGroup) {
+              <span class="ml-2 text-xs font-bold bg-indigo-100 text-indigo-700 px-2 py-1 rounded-md">LVEF: {{dataService.filter().lvefGroup}}</span>
+            }
+            @if(dataService.filter().province) {
+               <span class="ml-2 text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-md">จังหวัด: {{dataService.filter().province}}</span>
+            }
+            @if(dataService.filter().district) {
+               <span class="ml-2 text-xs font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded-md">อำเภอ: {{dataService.filter().district}}</span>
+            }
+            @if(dataService.filter().subDistrict) {
+               <span class="ml-2 text-xs font-bold bg-purple-50 text-purple-700 px-2 py-1 rounded-md">ตำบล: {{dataService.filter().subDistrict}}</span>
+            }
+            @if(dataService.filter().etiology) {
+               <span class="ml-2 text-xs font-bold bg-pink-100 text-pink-700 px-2 py-1 rounded-md">สาเหตุ: {{dataService.filter().etiology}}</span>
+            }
+            @if(dataService.filter().insurance) {
+               <span class="ml-2 text-xs font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded-md">สิทธิ: {{dataService.filter().insurance}}</span>
+            }
+            @if(dataService.filter().ageGroup) {
+               <span class="ml-2 text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-md">อายุ: {{dataService.filter().ageGroup}}</span>
+            }
+            @if(dataService.filter().isTripleTherapy) {
+               <span class="ml-2 text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded-md">เงื่อนไข: ครบ 3 ตัว (Triple Therapy)</span>
+            }
+            @if(dataService.filter().appointmentLocation) {
+               <span class="ml-2 text-xs font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded-md">คลินิก: {{dataService.filter().appointmentLocation}}</span>
+            }
+            @if(dataService.filter().appointmentDate) {
+               <span class="ml-2 text-xs font-bold bg-indigo-100 text-indigo-700 px-2 py-1 rounded-md">วันนัด: {{dataService.filter().appointmentDate}}</span>
+            }
+            @if(dataService.filter().medication) {
+               <span class="ml-2 text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-md">ยา: {{dataService.filter().medication}}</span>
+            }
+            @if(dataService.filter().isRespiFailure) {
+               <span class="ml-2 text-xs font-bold bg-red-100 text-red-700 px-2 py-1 rounded-md">เงื่อนไข: Respi Failure</span>
+            }
+            @if(dataService.filter().isDiureticAdjust) {
+               <span class="ml-2 text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-md">เงื่อนไข: ปรับยาขับปัสสาวะ</span>
+            }
+            @if(dataService.filter().hasNextAppointment) {
+               <span class="ml-2 text-xs font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded-md">เงื่อนไข: มีนัดแล้ว</span>
+            }
+          </h3>
+          <div class="flex gap-4 items-center">
+            <button (click)="exportCsv()" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
+               <i class="fa-solid fa-file-csv"></i> ส่งออก CSV
+            </button>
+            <button (click)="dataService.clearFilter(); resetLocationFilter()" class="text-xs font-bold text-gray-500 hover:text-gray-700 transition-colors">ล้างตัวกรอง</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-100">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-extrabold text-gray-700 uppercase tracking-wider">HN</th>
+                <th class="px-6 py-3 text-left text-xs font-extrabold text-gray-700 uppercase tracking-wider">ชื่อ-สกุล</th>
+                <th class="px-6 py-3 text-left text-xs font-extrabold text-gray-700 uppercase tracking-wider">สถานะ</th>
+                <th class="px-6 py-3 text-left text-xs font-extrabold text-gray-700 uppercase tracking-wider">LVEF</th>
+                <th class="px-6 py-3 text-left text-xs font-extrabold text-gray-700 uppercase tracking-wider">ที่อยู่</th>
+                <th class="px-6 py-3 text-left text-xs font-extrabold text-gray-700 uppercase tracking-wider">ยาที่ได้รับ</th>
+                <th class="px-6 py-3 text-left text-xs font-extrabold text-gray-700 uppercase tracking-wider">Admit ล่าสุด</th>
+                <th class="px-6 py-3 text-left text-xs font-extrabold text-gray-700 uppercase tracking-wider">วันนัดถัดไป</th>
+                <th class="px-6 py-3 text-right text-xs font-extrabold text-gray-700 uppercase tracking-wider">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              @for (p of paginatedPatients(); track p.id) {
+                <tr class="hover:bg-gray-50 transition-colors">
+                  <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                    {{ p.hn }}
+                    @if(p.an) { <div class="text-[10px] text-gray-500">AN: {{p.an}}</div> }
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {{ p.firstName }} {{ p.lastName }}
+                    <div class="text-xs text-gray-500 font-normal">อายุ: {{ p.age }}, {{ p.gender }}</div>
+                    <div class="text-[10px] text-gray-400 font-normal">{{ p.insurance }}</div>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <span [class]="p.status === 'IPD' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'" 
+                      class="px-2 inline-flex text-xs leading-5 font-bold rounded-full">
+                      {{ p.status }}
+                    </span>
+                    @if(p.status === 'IPD' && p.admissionCount) {
+                        <span class="ml-1 px-2 inline-flex text-[10px] font-bold bg-gray-100 text-gray-600 rounded-full border border-gray-200">
+                          Admit #{{ p.admissionCount }}
+                        </span>
+                    }
+                    @if(p.admitWard) {
+                       <div class="text-[10px] text-gray-500 mt-1">Ward: {{p.admitWard}}</div>
+                    }
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                     <div class="flex items-center">
+                       <span class="text-sm font-bold mr-2" [class.text-red-600]="p.lvef < 40" [class.text-green-600]="p.lvef >= 50">{{ p.lvef }}%</span>
+                       @if (p.lvef < 40) { <i class="fa-solid fa-heart-crack text-red-400 text-xs"></i> }
+                     </div>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-medium">
+                    <div>อ.{{ p.address.district }}</div>
+                    <div class="text-xs text-indigo-500 cursor-pointer hover:underline" (click)="filterSubDistrict(p.address.subDistrict)" title="คลิกเพื่อกรองตำบล">ต.{{ p.address.subDistrict }}</div>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                     <div class="flex gap-1">
+                       @if(p.meds.acei_arb) { <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800" title="ACEI/ARB">R</span> }
+                       @if(p.meds.arni) { <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-100 text-pink-800" title="ARNi">AR</span> }
+                       @if(p.meds.betaBlocker) { <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800" title="Beta Blocker">B</span> }
+                       @if(p.meds.mra) { <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800" title="MRA">M</span> }
+                       @if(p.meds.sglt2i) { <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-800" title="SGLT2i">S</span> }
+                     </div>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-xs text-gray-700 font-medium">{{ p.lastAdmission || '-' }}</td>
+                  <td class="px-6 py-4 whitespace-nowrap text-xs text-gray-700 font-medium">
+                     <div>{{ p.nextAppointment?.date || '-' }}</div>
+                     @if(p.nextAppointment?.location) {
+                        <div class="text-[10px] text-gray-500 truncate max-w-[100px]">{{p.nextAppointment?.location}}</div>
+                     }
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button (click)="openEdit(p)" class="text-indigo-600 hover:text-indigo-900 font-bold hover:bg-indigo-50 px-2 py-1 rounded">
+                      <i class="fa-regular fa-pen-to-square"></i> แก้ไข
+                    </button>
+                    @if (userRole() === 'admin') {
+                      <button (click)="confirmDelete(p)" class="text-red-600 hover:text-red-900 font-bold hover:bg-red-50 px-2 py-1 rounded ml-1">
+                        <i class="fa-regular fa-trash-can"></i> ลบ
+                      </button>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <!-- Pagination Footer -->
+        <div class="bg-gray-50 px-4 py-3 border-t border-gray-200 flex items-center justify-between sm:px-6">
+           <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+              <div>
+                 <p class="text-sm text-gray-700 font-bold">
+                    แสดง <span class="font-medium text-indigo-600">{{ (currentPage() - 1) * itemsPerPage + 1 }}</span> 
+                    ถึง <span class="font-medium text-indigo-600">{{ paginationEnd() }}</span> 
+                    จาก <span class="font-medium text-indigo-600">{{ dataService.filteredPatients().length }}</span> รายการ
+                 </p>
+              </div>
+              <div>
+                 <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                    <button 
+                      (click)="changePage(currentPage() - 1)" 
+                      [disabled]="currentPage() === 1"
+                      [class.opacity-50]="currentPage() === 1"
+                      class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                       <span class="sr-only">Previous</span>
+                       <i class="fa-solid fa-chevron-left h-5 w-5 p-1"></i>
+                    </button>
+                    
+                    <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-bold text-gray-700">
+                       หน้า {{ currentPage() }} / {{ totalPages() || 1 }}
+                    </span>
+                    
+                    <button 
+                      (click)="changePage(currentPage() + 1)" 
+                      [disabled]="currentPage() >= totalPages()"
+                      [class.opacity-50]="currentPage() >= totalPages()"
+                      class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                       <span class="sr-only">Next</span>
+                       <i class="fa-solid fa-chevron-right h-5 w-5 p-1"></i>
+                    </button>
+                 </nav>
+              </div>
+           </div>
+        </div>
+      </div>
+
+    </main>
+  }
+
+  <!-- Universal Modal -->
+  @if (showModal()) {
+    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-900 bg-opacity-75 backdrop-blur-sm flex items-center justify-center">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl m-4 flex flex-col max-h-[90vh]">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+          <h3 class="text-lg font-extrabold text-gray-900">
+             {{ formState().id ? 'แก้ไขข้อมูลผู้ป่วย' : 'ลงทะเบียนผู้ป่วยใหม่' }}
+          </h3>
+          <button (click)="closeModal()" class="text-gray-400 hover:text-gray-600">
+            <i class="fa-solid fa-xmark text-xl"></i>
+          </button>
+        </div>
+        
+        <div class="p-6 overflow-y-auto flex-1">
+           <!-- Row 1 -->
+           <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">HN</label>
+                <input type="text" list="hnList" [(ngModel)]="formState().hn" (blur)="checkExistingHn()" class="w-full border border-gray-300 bg-white text-gray-900 rounded-lg px-3 py-2 font-bold focus:border-indigo-500 focus:outline-none" placeholder="ค้นหา HN หรือกรอกใหม่">
+                <datalist id="hnList">
+                  @for (p of dataService.patients(); track p.hn) {
+                    <option [value]="p.hn">{{ p.firstName }} {{ p.lastName }}</option>
+                  }
+                </datalist>
+              </div>
+              <div>
+                 <label class="block text-xs font-bold text-gray-700 mb-1">ชื่อ</label>
+                 <input type="text" [(ngModel)]="formState().firstName" class="w-full border border-gray-300 bg-white text-gray-900 rounded-lg px-3 py-2 font-bold focus:border-indigo-500 focus:outline-none">
+              </div>
+              <div>
+                 <label class="block text-xs font-bold text-gray-700 mb-1">นามสกุล</label>
+                 <input type="text" [(ngModel)]="formState().lastName" class="w-full border border-gray-300 bg-white text-gray-900 rounded-lg px-3 py-2 font-bold focus:border-indigo-500 focus:outline-none">
+              </div>
+           </div>
+           
+           <!-- Row 2 -->
+           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                 <label class="block text-xs font-bold text-gray-700 mb-1">อายุ</label>
+                 <input type="number" [(ngModel)]="formState().age" class="w-full border border-gray-300 bg-white text-gray-900 rounded-lg px-3 py-2 font-bold focus:border-indigo-500 focus:outline-none">
+              </div>
+              <div>
+                 <label class="block text-xs font-bold text-gray-700 mb-1">เพศ</label>
+                 <select [(ngModel)]="formState().gender" class="w-full border border-gray-300 bg-white text-gray-900 rounded-lg px-3 py-2 font-bold focus:border-indigo-500 focus:outline-none">
+                    <option value="ชาย">ชาย</option>
+                    <option value="หญิง">หญิง</option>
+                 </select>
+              </div>
+              <div>
+                 <label class="block text-xs font-bold text-gray-700 mb-1">สถานะ</label>
+                 <select [(ngModel)]="formState().status" class="w-full border border-gray-300 bg-white text-gray-900 rounded-lg px-3 py-2 font-bold focus:border-indigo-500 focus:outline-none">
+                    <option value="OPD">OPD</option>
+                    <option value="IPD">IPD</option>
+                 </select>
+              </div>
+              <div>
+                 <label class="block text-xs font-bold text-gray-700 mb-1">LVEF (%)</label>
+                 <input type="number" [(ngModel)]="formState().lvef" class="w-full border border-gray-300 bg-white text-indigo-600 rounded-lg px-3 py-2 font-bold focus:border-indigo-500 focus:outline-none">
+              </div>
+           </div>
+           
+           @if(formState().status === 'IPD') {
+             <div class="mb-4 p-3 bg-red-50 border border-red-100 rounded-lg">
+                <!-- AN Input -->
+                <div class="mb-3">
+                   <label class="block text-xs font-bold text-red-700 mb-1">AN (Admission Number)</label>
+                   <input type="text" [(ngModel)]="formState().an" class="w-full border border-red-200 bg-white rounded-lg px-3 py-2 font-bold focus:border-red-500 focus:outline-none text-gray-700" placeholder="ระบุเลข AN">
+                </div>
+                
+                <label class="block text-xs font-bold text-red-700 mb-1">สาเหตุ Heart Failure (Etiology)</label>
+                <select [(ngModel)]="formState().etiology" class="w-full border border-red-200 bg-white rounded-lg px-3 py-2 font-bold focus:border-red-500 focus:outline-none text-gray-700">
+                   <option value="" disabled>-- กรุณาเลือกสาเหตุ --</option>
+                   <option value="Ischemic">Ischemic</option>
+                   <option value="Non-ischemic">Non-ischemic</option>
+                   <option value="Other (HTN heart disease, Pulmonary hypertension, Severe VHD)">Other (HTN heart disease, Pulmonary hypertension, Severe VHD)</option>
+                </select>
+             </div>
+           }
+
+            <!-- Insurance Info (With Datalist) -->
+            <div class="mb-4">
+                <label class="block text-xs font-bold text-gray-700 mb-1">สิทธิการรักษา</label>
+                <input type="text" list="insuranceList" [(ngModel)]="formState().insurance" class="w-full border border-gray-300 bg-white text-gray-900 rounded-lg px-3 py-2 font-bold focus:border-indigo-500 focus:outline-none" placeholder="ระบุหรือเลือกสิทธิการรักษา">
+                <datalist id="insuranceList">
+                   @for (ins of uniqueInsurances(); track ins) {
+                      <option [value]="ins"></option>
+                   }
+                </datalist>
+            </div>
+
+           <!-- Address (With Datalist) -->
+           <div class="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <h4 class="text-sm font-bold text-gray-800 mb-2 border-b border-gray-200 pb-1">ที่อยู่ปัจจุบัน</h4>
+              <div class="grid grid-cols-2 gap-4">
+                 <div>
+                    <label class="block text-xs font-bold text-gray-600">เลขที่</label>
+                    <input type="text" [(ngModel)]="formState().address.number" class="w-full border border-gray-300 bg-white rounded px-2 py-1.5 text-sm font-medium mt-1 text-gray-900" placeholder="เช่น 123/4">
+                 </div>
+                 <div>
+                    <label class="block text-xs font-bold text-gray-600">ตำบล</label>
+                    <input type="text" list="subDistrictList" [(ngModel)]="formState().address.subDistrict" class="w-full border border-gray-300 bg-white rounded px-2 py-1.5 text-sm font-medium mt-1 text-gray-900">
+                    <datalist id="subDistrictList">
+                      @for (item of uniqueSubDistricts(); track item) { <option [value]="item"></option> }
+                    </datalist>
+                 </div>
+                 <div>
+                    <label class="block text-xs font-bold text-gray-600">อำเภอ</label>
+                    <input type="text" list="districtList" [(ngModel)]="formState().address.district" class="w-full border border-gray-300 bg-white rounded px-2 py-1.5 text-sm font-medium mt-1 text-gray-900" placeholder="ระบุอำเภอ">
+                    <datalist id="districtList">
+                      @for (item of uniqueDistricts(); track item) { <option [value]="item"></option> }
+                    </datalist>
+                 </div>
+                 <div>
+                    <label class="block text-xs font-bold text-gray-600">จังหวัด</label>
+                    <input type="text" list="provinceList" [(ngModel)]="formState().address.province" class="w-full border border-gray-300 bg-white rounded px-2 py-1.5 text-sm font-medium mt-1 text-gray-900" placeholder="ระบุจังหวัด">
+                    <datalist id="provinceList">
+                      @for (item of uniqueProvinces(); track item) { <option [value]="item"></option> }
+                    </datalist>
+                 </div>
+              </div>
+           </div>
+           
+           <!-- Treatment Info -->
+           <div class="mb-4 p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+              <h4 class="text-sm font-bold text-indigo-900 mb-2 border-b border-indigo-200 pb-1">ข้อมูลการรักษา (Treatment)</h4>
+              
+              <!-- Conditional IPD Fields -->
+              @if(formState().status === 'IPD') {
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                   <div>
+                      <label class="block text-xs font-bold text-gray-700">Ward ที่ Admit</label>
+                      <input type="text" [(ngModel)]="formState().admitWard" class="w-full border border-gray-300 bg-white rounded px-2 py-1.5 text-sm font-medium mt-1 text-gray-900" placeholder="ระบุ Ward หรือเลือก (ICU/สามัญ)">
+                   </div>
+                   <div class="flex flex-col justify-end pb-1 gap-2">
+                      <label class="inline-flex items-center">
+                         <input type="checkbox" [(ngModel)]="formState().isRespiFailure" class="form-checkbox h-4 w-4 text-red-600 rounded border-gray-300">
+                         <span class="ml-2 text-sm font-bold text-gray-700">ใส่ท่อช่วยหายใจ (Respi Failure)</span>
+                      </label>
+                      <label class="inline-flex items-center">
+                         <input type="checkbox" [(ngModel)]="formState().isDiureticAdjust" class="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300">
+                         <span class="ml-2 text-sm font-bold text-gray-700">มีการปรับยาขับปัสสาวะ</span>
+                      </label>
+                   </div>
+                </div>
+              }
+
+              <div class="mt-2">
+                 <label class="block text-xs font-bold text-gray-700">{{ formState().status === 'IPD' ? 'รายละเอียดการรักษา (Admission Note)' : 'บันทึกผลการตรวจ (OPD Note)' }}</label>
+                 <textarea [(ngModel)]="formState().admissionNote" class="w-full border border-gray-300 bg-white rounded px-2 py-1.5 text-sm font-medium mt-1 text-gray-900 h-16" placeholder="บันทึกรายละเอียด..."></textarea>
+              </div>
+           </div>
+
+           <!-- Meds -->
+           <div class="mb-4">
+             <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+               <i class="fa-solid fa-pills text-indigo-600"></i> 
+               {{ formState().status === 'IPD' ? 'ยาที่ได้รับก่อนกลับบ้าน (Pre-discharge)' : 'ยาที่ได้รับปัจจุบัน' }}
+             </h4>
+             
+             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-4 rounded-lg border border-gray-200">
+               <!-- RAAS Selection (Click Logic) -->
+               <div class="col-span-1 md:col-span-2 space-y-2 pb-2 border-b border-gray-100">
+                 <label class="text-xs font-bold text-gray-700 block">ยากลุ่ม RAAS Blockade (เลือกหนึ่งอย่าง)</label>
+                 <div class="flex gap-4 mt-1">
+                   <div class="inline-flex items-center cursor-pointer" 
+                        (click)="formState().meds.acei_arb = true; formState().meds.arni = false">
+                     <div [class]="formState().meds.acei_arb ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-gray-300'"
+                          class="h-4 w-4 border rounded-full flex items-center justify-center">
+                          <div *ngIf="formState().meds.acei_arb" class="h-2 w-2 bg-white rounded-full"></div>
+                     </div>
+                     <span class="ml-2 text-sm font-bold text-gray-800">ACEI / ARB</span>
+                   </div>
+                   
+                   <div class="inline-flex items-center cursor-pointer"
+                        (click)="formState().meds.arni = true; formState().meds.acei_arb = false">
+                     <div [class]="formState().meds.arni ? 'bg-pink-600 border-pink-600' : 'bg-white border-gray-300'"
+                          class="h-4 w-4 border rounded-full flex items-center justify-center">
+                          <div *ngIf="formState().meds.arni" class="h-2 w-2 bg-white rounded-full"></div>
+                     </div>
+                     <span class="ml-2 text-sm font-bold text-gray-800">ARNi</span>
+                   </div>
+                   
+                   <div class="inline-flex items-center cursor-pointer"
+                        (click)="formState().meds.acei_arb = false; formState().meds.arni = false">
+                     <div [class]="!formState().meds.acei_arb && !formState().meds.arni ? 'bg-gray-600 border-gray-600' : 'bg-white border-gray-300'"
+                          class="h-4 w-4 border rounded-full flex items-center justify-center">
+                          <div *ngIf="!formState().meds.acei_arb && !formState().meds.arni" class="h-2 w-2 bg-white rounded-full"></div>
+                     </div>
+                     <span class="ml-2 text-sm font-medium text-gray-600">ไม่ได้รับยา</span>
+                   </div>
+                 </div>
+                 <!-- Target Dose Checkbox for RAAS -->
+                 @if(formState().meds.acei_arb || formState().meds.arni) {
+                    <div class="mt-2">
+                       <label class="inline-flex items-center cursor-pointer">
+                          <input type="checkbox" [(ngModel)]="formState().targetDoseReached.acei_arb_arni" class="form-checkbox h-4 w-4 text-green-600 rounded border-gray-300">
+                          <span class="ml-2 text-xs font-bold text-green-700">Target dose reached</span>
+                       </label>
+                    </div>
+                 }
+               </div>
+
+               <!-- Beta Blocker -->
+               <div class="flex flex-col p-2 hover:bg-gray-50 rounded border border-gray-100">
+                   <label class="flex items-center space-x-3 cursor-pointer">
+                     <input type="checkbox" [(ngModel)]="formState().meds.betaBlocker" class="form-checkbox h-5 w-5 text-emerald-600 rounded border-gray-300">
+                     <span class="text-sm font-bold text-gray-700">Beta-Blocker</span>
+                   </label>
+                   @if(formState().meds.betaBlocker) {
+                       <label class="inline-flex items-center cursor-pointer mt-2 ml-8">
+                          <input type="checkbox" [(ngModel)]="formState().targetDoseReached.betaBlocker" class="form-checkbox h-4 w-4 text-green-600 rounded border-gray-300">
+                          <span class="ml-2 text-xs font-bold text-green-700">Target dose reached</span>
+                       </label>
+                   }
+               </div>
+               
+               <!-- MRA -->
+               <div class="flex flex-col p-2 hover:bg-gray-50 rounded border border-gray-100">
+                   <label class="flex items-center space-x-3 cursor-pointer">
+                     <input type="checkbox" [(ngModel)]="formState().meds.mra" class="form-checkbox h-5 w-5 text-amber-600 rounded border-gray-300">
+                     <span class="text-sm font-bold text-gray-700">MRA</span>
+                   </label>
+                   @if(formState().meds.mra) {
+                       <label class="inline-flex items-center cursor-pointer mt-2 ml-8">
+                          <input type="checkbox" [(ngModel)]="formState().targetDoseReached.mra" class="form-checkbox h-4 w-4 text-green-600 rounded border-gray-300">
+                          <span class="ml-2 text-xs font-bold text-green-700">Target dose reached</span>
+                       </label>
+                   }
+               </div>
+
+               <label class="flex items-center space-x-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
+                 <input type="checkbox" [(ngModel)]="formState().meds.sglt2i" class="form-checkbox h-5 w-5 text-cyan-600 rounded border-gray-300">
+                 <span class="text-sm font-bold text-gray-700">SGLT2i</span>
+               </label>
+             </div>
+           </div>
+
+           <!-- Dates -->
+           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                 <label class="block text-xs font-bold text-gray-700 mb-1">วันที่ Admit ล่าสุด</label>
+                 <input type="date" [(ngModel)]="formState().lastAdmission" class="w-full border border-gray-300 bg-white rounded-lg px-3 py-2 font-medium focus:border-indigo-500 outline-none text-gray-900">
+              </div>
+              <div>
+                 <label class="block text-xs font-bold text-gray-700 mb-1">วันนัดถัดไป</label>
+                 <div class="flex flex-col gap-2" *ngIf="formState().nextAppointment">
+                    <input type="date" [(ngModel)]="formState().nextAppointment.date" class="w-full border border-gray-300 bg-white rounded-lg px-3 py-2 font-medium focus:border-indigo-500 outline-none text-gray-900">
+                    <!-- Location Select for OPD -->
+                    <select [(ngModel)]="formState().nextAppointment.location" class="w-full border border-gray-300 bg-white rounded-lg px-3 py-2 font-medium text-sm focus:border-indigo-500 outline-none text-gray-900">
+                       <option value="OPD Cardio LPN (พุธ)">OPD Cardio LPN (พุธ)</option>
+                       <option value="OPD HF ป่าซาง">OPD HF ป่าซาง</option>
+                       <option value="OPD HF ลี้">OPD HF ลี้</option>
+                       <option value="HF clinic (ส่งต่อ LPN)">HF clinic (ส่งต่อ LPN)</option>
+                    </select>
+                    <input type="text" [(ngModel)]="formState().nextAppointment.detail" class="w-full border border-gray-300 bg-white rounded-lg px-3 py-2 font-medium text-sm focus:border-indigo-500 outline-none text-gray-900" placeholder="รายละเอียดการนัด (เช่น เจาะเลือด, Echo)">
+                 </div>
+                 <div *ngIf="!formState().nextAppointment">
+                    <button (click)="formState().nextAppointment = {date: '', location: 'OPD Cardio LPN (พุธ)', detail: ''}" class="text-indigo-600 text-xs font-bold underline">เพิ่มวันนัด</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+        
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3 rounded-b-xl">
+           <button (click)="closeModal()" class="px-5 py-2 rounded-lg text-gray-700 font-bold hover:bg-gray-200 transition-colors">ยกเลิก</button>
+           <button (click)="savePatient()" [disabled]="isSaving()" class="px-6 py-2 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center gap-2">
+              <i *ngIf="isSaving()" class="fa-solid fa-circle-notch fa-spin"></i>
+              {{ isSaving() ? 'กำลังบันทึก...' : 'บันทึกข้อมูล' }}
+           </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>
